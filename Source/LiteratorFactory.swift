@@ -99,20 +99,6 @@ public class LiteratorFactory {
     }
     
     /**
-     Get the underlying mappings for the specified _scheme_ and _script_.
-     
-     - Parameters:
-     - schemeName: Name of the _scheme_ which should be one of `availableSchemes`
-     - scriptName: Name of the _script_ which should be one of `availableScripts`
-     - Returns: A nested map of Type->Key->([Scheme], Script)
-     - Throws: EngineError
-     */
-    public func mappings(schemeName: String, scriptName: String) throws -> [String: MappingValue] {
-        let parsed = try factory.parse(schemeName: schemeName, scriptName: scriptName)
-        return parsed.mappings
-    }
-    
-    /**
      Get an instance of Transliterator for the specified _scheme_ and _script_.
      
      - Parameters:
