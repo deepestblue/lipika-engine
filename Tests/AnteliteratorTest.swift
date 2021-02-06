@@ -56,7 +56,13 @@ class AnteliteratorTest: XCTestCase {
     func testStopCharacter() throws {
         let anteliterator = try factory!.anteliterator(schemeName: "Barahavat", scriptName: "Devanagari")
         let result: String = anteliterator.anteliterate("=\\-")
-        XCTAssertEqual(result, "=\\\\-")
+        XCTAssertEqual(result, "`=`\\\\`-`")
+    }
+    
+    func testEscapeCharacter() throws {
+        let anteliterator = try factory!.anteliterator(schemeName: "Barahavat", scriptName: "Devanagari")
+        let result: String = anteliterator.anteliterate("क``A")
+        XCTAssertEqual(result, "ka````\\`A`")
     }
     
     func testBindingOrder() throws {
@@ -108,10 +114,16 @@ class AnteliteratorTest: XCTestCase {
         XCTAssertEqual(result, "jc")
     }
     
-    func testFixedReplacent() throws {
-        let anteliterator = try factory!.anteliterator(schemeName: "Baraha", scriptName: "Gurmukhi")
-        let result: String = anteliterator.anteliterate("ਘਵੱਸ਼ਗ")
-        XCTAssertEqual(result, "ghv\\shsha\\g")
+    func testRearrangement() throws {
+        let anteliterator = try factory!.anteliterator(schemeName: "Barahavat", scriptName: "Kannada")
+        let result: String = anteliterator.anteliterate("ಸೂರ‌್ಯ")
+        XCTAssertEqual(result, "suur^ya")
+    }
+    
+    func testWhitespace() throws {
+        let anteliterator = try factory!.anteliterator(schemeName: "Barahavat", scriptName: "Devanagari")
+        let result: String = anteliterator.anteliterate("abअत्रेयc \n deअत्रेfय")
+        XCTAssertEqual(result, "`ab`\\atreya\\`c \n de`\\atre\\`f`\\ya")
     }
     
     func testWhitespace() throws {

@@ -10,7 +10,7 @@
 /**
  Transliterated output of any function that changes input.
  
- *Notes*:
+ - Note:
     - `finalaizedInput`: The aggregate input in specified _script_ that will not change
     - `finalaizedOutput`: Transliterated unicode String in specified _script_ that will not change
     - `unfinalaizedInput`: The aggregate input in specified _script_ that will change based on future inputs
@@ -22,8 +22,8 @@ public typealias Literated = (finalaizedInput: String, finalaizedOutput: String,
  Stateful class that aggregates incremental input in the given _scheme_ and provides aggregated output in the specified _script_ through the transliterate API.
  
  __Usage__:
- ````
- struct MyConfig: Config {
+ ```
+ class MyConfig: Config {
     ...
  }
  
@@ -36,36 +36,30 @@ public typealias Literated = (finalaizedInput: String, finalaizedOutput: String,
  let tranliterator = try factory.tranliterator(schemeName: schemes[0], scriptName: scripts[0])
  
  try tranliterator.transliterate("...")
- ````
+ ```
 */
 public class Transliterator {
+    /**
+     Units that define a position within the aggregate state of the `Transliterator`
+     */
+    public enum PositionalUnits {
+        /// Position within array of unicodeScalar inputs made by the user within the current session
+        case input
+        /// Position within the array of unicodeScalar outputs produced in the current session
+        case outputScalar
+        /// Position within the array of character outputs produced in the current session
+        case outputChar
+    }
     private let config: Config
     private let engine: EngineProtocol
     private var results = [Result]()
-    private var finalizedIndex = 0
     private var isEscaping = false
     private var wasOddEscape = false
     private var wasOddStop = false
     
-    // This logic is shared with the Anteliterator
-    static func finalizeResults(_ rawResults: [Result], _ results: inout [Result], _ finalizedIndex: inout Int) {
-        for rawResult in rawResults {
-            if rawResult.isPreviousFinal {
-                finalizedIndex = results.endIndex
-            }
-            else {
-                results.removeSubrange(finalizedIndex...)
-            }
-            results.append(rawResult)
-        }
-    }
-    
-    private func finalizeResults(_ finalizedResults: [Result]) {
-        Transliterator.finalizeResults(finalizedResults, &results, &finalizedIndex)
-    }
-    
     private func collapseBuffer() -> Literated {
         var response: Literated = ("", "", "", "")
+        let finalizedIndex = results.lastIndex(where: { $0.isPreviousFinal }) ?? 0
         for (index, result) in results.enumerated() {
             if index < finalizedIndex {
                 response.finalaizedInput += result.input
@@ -90,14 +84,14 @@ public class Transliterator {
                 wasOddEscape = false
                 engine.reset()
                 // Output stop character only if it is escaped
-                finalizeResults([Result(input: [config.stopCharacter], output: wasOddStop ? String(config.stopCharacter) : "", isPreviousFinal: true)])
+                results.append(contentsOf: [Result(input: [config.stopCharacter], output: wasOddStop ? String(config.stopCharacter) : "", isPreviousFinal: true), Result(input: "", output: "", isPreviousFinal: true)])
                 wasOddStop = !wasOddStop
             }
             else if scalar == config.escapeCharacter {
                 wasOddStop = false
                 engine.reset()
                 // Output escape character only if it is escaped
-                finalizeResults([Result(input: [scalar], output: wasOddEscape ? String(config.escapeCharacter) : "", isPreviousFinal: true)])
+                results.append(contentsOf: [Result(input: [scalar], output: wasOddEscape ? String(config.escapeCharacter) : "", isPreviousFinal: true), Result(input: "", output: "", isPreviousFinal: true)])
                 isEscaping = !isEscaping
                 wasOddEscape = !wasOddEscape
             }
@@ -105,10 +99,10 @@ public class Transliterator {
                 wasOddStop = false
                 wasOddEscape = false
                 if isEscaping {
-                    finalizeResults([Result(inoutput: [scalar], isPreviousFinal: true)])
+                    results += [Result(inoutput: [scalar], isPreviousFinal: true), Result(input: "", output: "", isPreviousFinal: true)]
                 }
                 else {
-                    finalizeResults(engine.execute(input: scalar))
+                    results += engine.execute(input: scalar)
                 }
             }
         }
@@ -123,26 +117,43 @@ public class Transliterator {
     }
     
     /**
-     For the given input or output position in the aggregate state of the `Transliterator`, return the corrosponding output or input position.
+     Convert the given position from one `PositionalUnits` to another within the aggregate `Transliterator` state.
      
      - Parameters:
-       - forPosition: index position within the aggregate input or output string as specified by `inOutput` parameter
-       - inOutput: if true then `forPosition` indicates position in the output string, otherwise indicates position in the input string
-     - Returns: corrosponding index position in the aggregate output or input string or `nil` if the position is invalid
+       - position: index position within the aggregate `Transliterator` state specified in `fromUnits`
+       - fromUnits: `PositionalUnits` of the `position` parameter
+       - toUnits: desired `PositionalUnits` of the returned value
+     - Returns: index corrosponding to input `position` in `toUnits` of the aggregate state or `nil` if the position is invalid
      */
-    public func findPosition(forPosition: Int, inOutput: Bool) -> Int? {
-        var remaining = forPosition
-        var position = 0
+    public func convertPosition(position: Int, fromUnits: PositionalUnits, toUnits: PositionalUnits) -> Int? {
+        if position < 0 { return nil }
+        if position == 0 { return 0 }
+        var remaining = position
+        var result = 0
         var index = 0
         while remaining > 0 {
             if index >= results.count {
                 return nil
             }
-            remaining -= inOutput ? results[index].output.unicodeScalars.count : results[index].input.unicodeScalars.count
-            position += inOutput ? results[index].input.unicodeScalars.count : results[index].output.unicodeScalars.count
+            switch fromUnits {
+            case .input:
+                remaining -= results[index].input.unicodeScalars.count
+            case .outputChar:
+                remaining -= results[index].output.count
+            case .outputScalar:
+                remaining -= results[index].output.unicodeScalars.count
+            }
+            switch toUnits {
+            case .input:
+                result += results[index].input.unicodeScalars.count
+            case .outputChar:
+                result += results[index].output.count
+            case .outputScalar:
+                result += results[index].output.unicodeScalars.count
+            }
             index += 1
         }
-        return position
+        return result
     }
 
     /**
@@ -151,7 +162,7 @@ public class Transliterator {
      - Important: This API maintains state and aggregates inputs given to it. Call `reset()` to clear state between invocations if desired.
      - Parameters:
        - input: (optional) Additional part of input string in specified _scheme_
-       - position: (optional) Position within the aggregate input string at which to insert `input`
+       - position: (optional) Position in `PositionalUnits.input` within the `Transliterator` state at which to insert `input`
      - Returns: `Literated` output for the aggregated input
      */
     public func transliterate(_ input: String? = nil, position: Int? = nil) -> Literated {
@@ -177,7 +188,7 @@ public class Transliterator {
      Delete the specified input character from the buffer if it exists or if unspecified, delete the last input character.
 
      - Important: the method is O(1) when `position` is either nil or unspecified and O(n) otherwise
-     - Parameter position: (optional) the position **after** the input character to delete from the input string or the last character if unspecified
+     - Parameter position: (optional) the position in `PositionalUnits.input` within the `Transliterator` state **after** which to delete or the last character if unspecified
      - Returns: `Literated` output for the remaining input or `nil` if there is nothing to delete
     */
     public func delete(position: Int? = nil) -> Literated? {
@@ -213,7 +224,6 @@ public class Transliterator {
             engine.reset()
             let response = results.isEmpty ? nil: collapseBuffer()
             results = [Result]()
-            finalizedIndex = results.startIndex
             isEscaping = false
             wasOddEscape = false
             wasOddStop = false

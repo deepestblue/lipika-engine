@@ -21,8 +21,8 @@ extension String {
  Stateless class that provides the ability to reverse-transliterate from the given _script_ to the specified _scheme_ with the anteliterate API. Unlike the Transliterator, this class does not aggregate inputs. The assumption is that while anteliterating the clients already have the full output string that they want to reverse-transliterate into the specified _scheme_.
  
  __Usage__:
- ````
- struct MyConfig: Config {
+ ```
+ class MyConfig: Config {
  ...
  }
  
@@ -35,7 +35,7 @@ extension String {
  let anteliterator = try factory.anteliterator(schemeName: schemes[0], scriptName: scripts[0])
  
  try anteliterator.anteliterate("...")
- ````
+ ```
  */
 public class Anteliterator {
     private let config: Config
@@ -48,19 +48,13 @@ public class Anteliterator {
         self.anteEngine = anteEngine
     }
     
-    private func finalizeResults(_ rawResults: [Result]) -> [Result] {
-        var results = [Result]()
-        var finalizedIndex = 0
-        Transliterator.finalizeResults(rawResults, &results, &finalizedIndex)
-        return results
-    }
-    
     /// This is necessary for correctness otherwise unnecessary stop characters will be introduced
     private func compactResults(_ rawResults: [Result]) -> [Result] {
         var results = [Result]()
         var wasLastInoutput = false
         for currentResult in rawResults {
-            let isCurrentInoutput = currentResult.input == currentResult.output
+            let isSpecial = currentResult.input.unicodeScalars.count == 1 && (currentResult.input.unicodeScalars.first! == config.stopCharacter || currentResult.input.unicodeScalars.first! == config.escapeCharacter)
+            let isCurrentInoutput = (currentResult.input == currentResult.output) && !isSpecial
             if wasLastInoutput && isCurrentInoutput {
                 let lastResult = results.removeLast()
                 results.append(Result(inoutput: lastResult.input + currentResult.input, isPreviousFinal: true))
@@ -81,8 +75,7 @@ public class Anteliterator {
      */
     internal func anteliterate(_ output: String) -> [Result] {
         anteEngine.reset()
-        let rawResults = anteEngine.execute(inputs: output.unicodeScalars.reversed())
-        var results = finalizeResults(rawResults)
+        var results = anteEngine.execute(inputs: output.unicodeScalars.reversed())
         results = results.reversed().map() {
             return Result(input: $0.input.unicodeScalarReversed(), output: $0.output.unicodeScalarReversed(), isPreviousFinal: $0.isPreviousFinal)
         }

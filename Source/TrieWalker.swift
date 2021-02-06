@@ -14,7 +14,7 @@
  */
 enum WalkerResultType { case mappedOutput, mappedNoOutput, noMappedOutput }
 
-class TrieWalker<Key: RangeReplaceableCollection, Value: CustomStringConvertible> where Key.Element: Hashable, Key.Element: CustomStringConvertible {
+class TrieWalker<Key: RangeReplaceableCollection, Value: CustomStringConvertible> where Key: BidirectionalCollection, Key.Element: Hashable, Key.Element: CustomStringConvertible {
     /**
      Tagged union of possible outcomes of a single TrieWalk.
      */
@@ -22,11 +22,14 @@ class TrieWalker<Key: RangeReplaceableCollection, Value: CustomStringConvertible
 
     private var outputIndics = [Key.Index]()
     private var inputsSinceOutput: Key { return Key(inputs[(outputIndics.last ?? inputs.startIndex)...]) }
+    // This is the strong reference to the root and currentNode is a weak pointer
+    private let trie: Trie<Key, Value>
     private (set) var inputs: Key
-    private (set) var currentNode: Trie<Key, Value>
     private (set) var epoch: UInt = 0
+    private (set) unowned var currentNode: Trie<Key, Value>
 
     init(trie: Trie<Key, Value>) {
+        self.trie = trie
         currentNode = trie
         inputs = Key()
     }
@@ -35,13 +38,12 @@ class TrieWalker<Key: RangeReplaceableCollection, Value: CustomStringConvertible
         currentNode = currentNode.root
         inputs.removeAll()
         outputIndics.removeAll()
-        epoch = epoch &+ 1
+        epoch = epoch + 1
     }
     
     func stepBack() {
         guard !currentNode.isRoot else { return }
-        // Doing this rather than inputs.removeLast() because of a bug in Swift that fails with "Cannot use mutating member on immutable value: 'self' is immutable"
-        inputs.remove(at: inputs.index(inputs.startIndex, offsetBy: inputs.count - 1))
+        inputs.removeLast()
         if currentNode.value != nil {
             outputIndics.removeLast()
         }

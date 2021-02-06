@@ -31,7 +31,7 @@ class RuleOutput: CustomStringConvertible {
         self.output = output
     }
     
-    func generate(replacement: OrderedMap<String, [String]>) -> String {
+    func generate(replacement: [String: [String]]) -> String {
         var replacement = replacement
         return output.reduce("") { (previous, delta) -> String in
             switch delta {
@@ -62,11 +62,11 @@ class RuleInput: Hashable, CustomStringConvertible {
         self.key = key
     }
     
-    var hashValue: Int {
+    func hash(into hasher: inout Hasher) {
         if let key = key {
-            return (type.hashValue << 5) &+ type.hashValue &+ key.hashValue /* djb2 */
+            key.hash(into: &hasher)
         }
-        return type.hashValue
+        type.hash(into: &hasher)
     }
 
     static func == (lhs: RuleInput, rhs: RuleInput) -> Bool {
@@ -91,6 +91,13 @@ class MappingOutput {
     }
 }
 
+/**
+ Ordered map of key to (scheme, script) tuple. Ordering of keys is important because conflicting mappings are resolved by having later keys override the earlier keys.
+ ## Example ##
+ ```
+ "KA" -> (scheme: "k", script: "ಕ")
+ ```
+ */
 public typealias MappingValue = OrderedMap<String, (scheme: [String], script: String?)>
 typealias MappingTrie = Trie<[UnicodeScalar], [MappingOutput]>
 
